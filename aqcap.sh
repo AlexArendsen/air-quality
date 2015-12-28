@@ -8,7 +8,7 @@ MONITOR=aqmon0    # Preferred name for monitor interface to create, pick anythin
 function capture() {
   iw "$CARD" set freq $1
   tcpdump -i "$MONITOR" -w "$sessiondir/$2" 2> /dev/null &
-  echo "Capturing traffic on $3 for 5 seconds..."
+  echo "Capturing traffic on $3 for 5 seconds..." > /dev/stderr
   sleep 5
   pkill tcpdump
 }
