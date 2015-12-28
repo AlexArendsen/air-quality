@@ -31,6 +31,7 @@ struct entity {
 struct channel {
   short int channel;
   u_int64_t traffic;
+  u_int64_t usage;
   struct entity* aps[20];
   short int naps;
 };
@@ -295,13 +296,17 @@ u_int8_t *grade_aps_by_rssi() {
 
 // Give 4-figure human-readable size (eg, 123456 => 123.4k)
 void humanbytes(u_int64_t bytes, char *buffer) {
-  float num = (float) bytes;
-  int magnitude = 0;
-  while (num > 1000) {
-    ++magnitude;
-    num /= 1000.0;
+  if(bytes == 0) {
+    sprintf(buffer, "-----");
+  } else {
+    float num = (float) bytes;
+    int magnitude = 0;
+    while (num > 1000) {
+      ++magnitude;
+      num /= 1000.0;
+    }
+    sprintf(buffer, "%.01f%c", num, bytesuffixes[magnitude]);
   }
-  sprintf(buffer, "%.01f%c", num, bytesuffixes[magnitude]);
 }
 
 // Analyze traffic
@@ -324,69 +329,91 @@ void analyze() {
     else if (rssi > -110) { strcpy(rssi_descriptor,"Poor"); }
     else { strcpy(rssi_descriptor,"No Signal"); }
 
-
+    // Count users
+    for (int j = 0; j < nent; ++j) {
+      if (en[j].apmac == en[idx].mac) { ++en[idx].nusers; }
+    }
     print_mac(en[idx].mac);
-    printf(" \"%s\" (Channel %d): %s (%ddBm)\n", en[idx].ssid, en[idx].channel, rssi_descriptor, rssi);
+    humanbytes(en[idx].rxtraffic + en[idx].txtraffic, bytebuffer);
+    printf(
+      " | %2d Usr | %6s RxTx | %3d Bcn | Ch %02d | SSID %16s | %s (%ddBm)\n",
+      en[idx].nusers,
+      bytebuffer,
+      en[idx].beacons,
+      en[idx].channel,
+      en[idx].ssid,
+      rssi_descriptor,
+      rssi
+    );
     for (int j = 0; j < nent; ++j) { // Print users
       if (en[j].apmac == en[idx].mac) {
         netshare = 100 * ((float) en[j].txtraffic / en[idx].rxtraffic);
-        en[idx].nusers++;
-        printf(" --> ");
-        print_mac(en[j].mac);
+        printf("  > ");
         humanbytes(en[j].txtraffic, bytebuffer);
-        printf(" %s (%.02f%%)", bytebuffer, netshare);
+        printf(" %6s (%6.2f%%) | ", bytebuffer, netshare);
+        print_mac(en[j].mac);
         printf("\n");
       }
     }
 
-    humanbytes(en[idx].rxtraffic, bytebuffer);
-    printf(" - %d users\n - %s traffic\n - %d beacons\n", en[idx].nusers, bytebuffer, en[idx].beacons);
-    printf("-------\n");
   }
+
+  printf("\n");
 }
 
 // Analyze channel usage
 void analyze_channels() {
   struct channel chans[12];
   u_int64_t ttot;
-  u_int64_t maxtot = 0;
+  u_int64_t maxtot = 1;
   short int chan;
-  int fac = 2;
+  int fac;
+  float rssi_coeff;
   int cchan;
   char bytebuffer[255];
   for(int i=0;i<12;++i){
     chans[i].naps = 0;
     chans[i].traffic = 0;
+    chans[i].usage = 0;
   }
 
   printf("Channel Analysis\n----\n");
   for (int i = 0; i < nent; ++i) {
-    if (en[i].type != TYPE_AP) {
-      continue;
-    }
+    if (en[i].type != TYPE_AP) { continue; }
 
     chan = en[i].channel - 1;
     fac = 2;
     if(chan <= 12) {
+      // Calculate total traffic + apply to tally
       ttot = en[i].rxtraffic + en[i].txtraffic;
       chans[chan].traffic += ttot;
+ 
+      // Increment usage by RSSI-attenuated traffic
+      rssi_coeff = (float) (en[i].rssi + 110) / 70;
+      if(rssi_coeff > 1) { rssi_coeff = 1.0f; }
+      else if (rssi_coeff < 0) {rssi_coeff = 0.0f;}
+      ttot *= rssi_coeff;
+      chans[chan].usage += ttot;
+
+      // Add this AP to its channel's list
       chans[chan].aps[chans[chan].naps] = &en[i];
       chans[chan].naps++;
-      for(int j = 1; j >= 3; ++j) {
-        if(chan-j >= 0) { chans[chan-j].traffic += ttot/fac; }
-        if(chan+j <= 12) { chans[chan+j].traffic += ttot/fac; }
+      for(int j = 1; j <= 3; ++j) {
+        if(chan-j >= 0) { chans[chan-j].usage += ttot/fac; }
+        if(chan+j <= 12) { chans[chan+j].usage += ttot/fac; }
         fac *= fac;
       }
 
+      ttot = chans[chan].usage;
       if (ttot > maxtot) { maxtot = ttot; }
     }
   }
 
   for (int i = 0; i < 12; ++i) {
     humanbytes(chans[i].traffic,bytebuffer);
-    printf("\nChannel %3d: %6s %2d APs | ", i+1, bytebuffer, chans[i].naps);
+    printf("\nChannel %3d: %6s %2d APs :: ", i+1, bytebuffer, chans[i].naps);
     // Print histogram of channel usage
-    for(int j=((16 * chans[i].traffic)/maxtot);j > 0; --j) {
+    for(int j=((48 * chans[i].usage)/maxtot);j > 0; --j) {
       printf("|");
     }
   }

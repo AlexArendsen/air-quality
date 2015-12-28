@@ -1,12 +1,14 @@
 # Air Quality
 
+![I solemnly swear I have carefully read my network's rules about packet sniffing](http://www.arendsen.me/alex/aq.png)
+
 **Air Quality** analyzes monitor traffic captured in packet capture (PCAP)
 files. It provides output enumerating nearby wireless access points, the
 users of those access points, network usage for all transmitting parties,
 and an analysis of channel usage.
 
 Air Quality is meant for use on the 2.4GHz band, and will not work with
-captures monitoring the 5GHz band.
+captures monitoring other bands.
 
 **Important Notice**: Network monitoring ("packet sniffing", etc.) is an often
 prohibited / restricted activity. Please observe the rules and regulations
