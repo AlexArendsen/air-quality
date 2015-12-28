@@ -14,7 +14,7 @@ corresponding to whatever network you are studying!
 
 ## Dependencies and Compatibility Notes
 
-The only dependency for Air Quality is **libpcacp**. The bundled support
+The only dependency for Air Quality is **libpcap**. The bundled support
 scripts have additional dependencies. Please refer to the corresponding section
 in this document for more information.
 
