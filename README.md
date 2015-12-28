@@ -1,6 +1,6 @@
 # Air Quality
 
-![I solemnly swear I have carefully read my network's rules about packet sniffing](http://www.arendsen.me/tmp/aq.png)
+![I solemnly swear I have carefully read my network's rules about packet sniffing](http://www.arendsen.me/thumbs/aq.png)
 
 **Air Quality** analyzes monitor traffic captured in packet capture (PCAP)
 files. It provides output enumerating nearby wireless access points, the
