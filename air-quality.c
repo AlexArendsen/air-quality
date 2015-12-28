@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pcap.h>
-#include <arpa/inet.h>
 
 #define MAX_ENTITIES 250
 #define SSID_LENGTH 255
