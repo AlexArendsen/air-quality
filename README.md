@@ -72,3 +72,10 @@ to be replaced (in this case you would use Air Quality's text output, but any
 file can be used).
 
 The script's only dependency is `sed`.
+
+### aqscan-example.sh
+
+The **aqscan-example.sh** script simply demonstrates how the program and these
+support scripts could be scripted together to perform a scan in a convenient way.
+Simply change the `LOOKUP` variable to the path to your `deref-macs` lookup,
+and run it (you'll probably need superuser privileges).
