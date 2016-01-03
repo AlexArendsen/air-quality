@@ -1,4 +1,5 @@
-/* Air Quality PCAP Analyzer
+/* 
+ * Air Quality PCAP Analyzer
  * by Alex Arendsen, 2015
  */
 #include <stdio.h>
@@ -14,33 +15,35 @@
 
 // Struct Defs
 
+// One structure for each WiFi entity detected
 struct entity {
-  u_int64_t mac;
-  u_int64_t apmac;
-  short int channel;
-  int nusers;
-  long unsigned int rxtraffic;
-  long unsigned int txtraffic;
-  int beacons;
-  char ssid[255];
-  int type;
-  int8_t rssi;
-  u_int8_t pktidx;
+  u_int64_t mac;      // MAC address of this entity
+  u_int64_t apmac;    // For users, MAC address of connected AP
+  short int channel;  // Radio 2.4GHz channel (number 1 - 12)
+  int nusers;         // For APs, number of connected users
+  long unsigned int rxtraffic;  // Bytes of receieved traffic
+  long unsigned int txtraffic;  // Bytes of transmitted traffic
+  int beacons;        // For APs, number of beacon frames transmitted
+  char ssid[255];     // For APs, the SSID this AP is broadcasting on this channel
+  int type;           // The entity type, either TYPE_UNKNOWN, TYPE_AP, or TYPE_USER
+  int8_t rssi;        // For APs, the RSSI (signal strength) of the first beacon frame
+  u_int8_t pktidx;    // The index of the first packet indicating the presence of this entity
 };
 
+// One structure for each channel in the 2.4GHz band
 struct channel {
-  short int channel;
-  u_int64_t traffic;
-  u_int64_t usage;
-  struct entity* aps[20];
-  short int naps;
+  short int channel;       // The index of this channel (1 - 12)
+  u_int64_t traffic;       // Bytes of all traffic on this channel
+  u_int64_t usage;         // An RSSI-adjusted measurement of the channel's usage
+  struct entity* aps[20];  // Array of APs serving on this channel
+  short int naps;          // Number of APs serving on this channel
 };
 
-// Globals
-int nent = 0;
-struct entity en[MAX_ENTITIES];
-long unsigned int pcount = 0;
-char bytesuffixes[] = {'b','k','M','G','T','E','P'};
+// Globals + Constants
+int nent = 0;                   // Number of registered entities
+struct entity en[MAX_ENTITIES]; // Array of registered entities
+long unsigned int pcount = 0;   // Number of packets processed
+const char bytesuffixes[] = {'b','k','M','G','T','E','P'};  // byte, kilobyte, etc., for humanbytes()
 
 // Function Prototypes
 // -- Finders
@@ -50,9 +53,9 @@ struct entity* find_ap(u_int64_t);
 struct entity* find_user(u_int64_t);
 u_char *find_tag(u_char*, u_int8_t, u_int8_t*);
 
-// -- Decoders
+// -- Codec
 u_int64_t get_mac(u_char*);
-void print_mac(u_int64_t);
+char *decode_mac(u_int64_t);
 u_int16_t get_two(u_char*);
 
 // -- Entity Management
@@ -73,6 +76,9 @@ void humanbytes(u_int64_t, char*);
 
 
 // Function Definitions
+
+// Entity finder backend, returns pointer to the entity with the given MAC address,
+// given that it exists and has the given type (-1 will match entities of any type)
 struct entity* _find(u_int64_t mac, int type) {
   struct entity* wrk = en;
   for (int i = 0; i < nent; ++i) {
@@ -97,13 +103,15 @@ u_int64_t get_mac(u_char *data) {
   return out;
 }
 
-// Print a MAC address encoded using the get_mac function
-void print_mac(u_int64_t mac) {
+// Decode MAC address encoded by get_mac function into a string
+char* decode_mac(u_int64_t mac) {
+  char *out = calloc(sizeof(char), 18);
   u_int8_t *wrk = (u_int8_t *)&mac;
-  for (int i = 5; i >= 0; --i) {
-    printf("%02x",*(wrk+i));
-    if (i>0) { printf(":"); }
+  for (int i = 0; i < 6; ++i) {
+    sprintf(out+(i*3),"%02x:",*(wrk+(5-i)));
   }
+  out[17] = '\0';
+  return out;
 }
 
 // Get two bytes from the pointed input data
@@ -113,16 +121,15 @@ u_int16_t get_two(u_char *data) {
 }
 
 // Seek tagged parameter in frame, data should point to beginning of tagged params
+// tag_id should be the type of tag to find
 u_char *find_tag(u_char* data, u_int8_t tag_id, u_int8_t* size) {
   u_int8_t tag_type = -1;
   u_int8_t tag_length = 0;
-  int skipped = 0;
   while (tag_type != tag_id) {
     tag_type = (u_int8_t) data[0];
     tag_length = (u_int8_t) data[1];
     if (tag_type != tag_id) {
       data += tag_length + 2;
-      skipped++;
     } else {
       data += 2;
     }
@@ -255,7 +262,7 @@ void handle_packet(u_char* args, const struct pcap_pkthdr* header, const u_char*
 
 
       if (st == dt || st == TYPE_AP || st == TYPE_USER) {
-        // Ignore cross-chat for now, shouldn't be very prevailent anyway
+        // Ignore cross-chat, shouldn't be very prevailent anyway
       } else if (st == TYPE_AP && dt == TYPE_UNKNOWN) {
         confirm_user(dst);
         dst->apmac = src->mac;
@@ -333,10 +340,10 @@ void analyze() {
     for (int j = 0; j < nent; ++j) {
       if (en[j].apmac == en[idx].mac) { ++en[idx].nusers; }
     }
-    print_mac(en[idx].mac);
     humanbytes(en[idx].rxtraffic + en[idx].txtraffic, bytebuffer);
     printf(
-      " | %2d Usr | %6s RxTx | %3d Bcn | Ch %02d | SSID %16s | %s (%ddBm)\n",
+      "%s | %2d Usr | %6s RxTx | %3d Bcn | Ch %02d | SSID %16s | %s (%ddBm)\n",
+      decode_mac(en[idx].mac),
       en[idx].nusers,
       bytebuffer,
       en[idx].beacons,
@@ -350,8 +357,7 @@ void analyze() {
         netshare = 100 * ((float) en[j].txtraffic / en[idx].rxtraffic);
         printf("  > ");
         humanbytes(en[j].txtraffic, bytebuffer);
-        printf(" %6s (%6.2f%%) | ", bytebuffer, netshare);
-        print_mac(en[j].mac);
+        printf(" %6s (%6.2f%%) | %s", bytebuffer, netshare, decode_mac(en[j].mac));
         printf("\n");
       }
     }
@@ -367,7 +373,7 @@ void analyze_channels() {
   u_int64_t ttot;
   u_int64_t maxtot = 1;
   short int chan;
-  int fac;
+  int factor;
   float rssi_coeff;
   int cchan;
   char bytebuffer[255];
@@ -382,7 +388,7 @@ void analyze_channels() {
     if (en[i].type != TYPE_AP) { continue; }
 
     chan = en[i].channel - 1;
-    fac = 2;
+    factor = 2;
     if(chan <= 12) {
       // Calculate total traffic + apply to tally
       ttot = en[i].rxtraffic + en[i].txtraffic;
@@ -399,9 +405,9 @@ void analyze_channels() {
       chans[chan].aps[chans[chan].naps] = &en[i];
       chans[chan].naps++;
       for(int j = 1; j <= 3; ++j) {
-        if(chan-j >= 0) { chans[chan-j].usage += ttot/fac; }
-        if(chan+j <= 12) { chans[chan+j].usage += ttot/fac; }
-        fac *= fac;
+        if(chan-j >= 0) { chans[chan-j].usage += ttot/factor; }
+        if(chan+j <= 12) { chans[chan+j].usage += ttot/factor; }
+        factor *= factor;
       }
 
       ttot = chans[chan].usage;
